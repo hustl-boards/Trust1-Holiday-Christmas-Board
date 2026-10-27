@@ -1,6 +1,6 @@
 # 3R Christmas Office TV
 
-Static GitHub Pages slideshow for the office TV. Twelve silent 15-second clips play in order, each through to the end, then the loop starts over.
+Static GitHub Pages slideshow for the office TV. Twenty-four silent 15-second clips play in order, each through to the end, then the loop starts over.
 
 The TV opens <https://ross680.github.io/Christmas-Office-Board/>.
 
@@ -26,7 +26,7 @@ Right arrow or Space: next · Left arrow: previous · P: pause · M: sound on/of
 
 Clips start muted so Chrome and TV browsers allow autoplay. M, or the sound button, turns sound on. The clips in this set are silent.
 
-Hover the picture to see the controls and the clip count (`3 / 12`). The days-until-Christmas chip stays in the corner. On December 25 it reads Merry Christmas. The date is America/New_York, the same clock as the other boards. A light snowfall sits over the picture.
+Hover the picture to see the controls and the clip count (`3 / 24`). The days-until-Christmas chip stays in the corner. On December 25 it reads Merry Christmas. The date is America/New_York, the same clock as the other boards. A light snowfall sits over the picture.
 
 ## URL options
 
@@ -42,11 +42,40 @@ Hover the picture to see the controls and the clip count (`3 / 12`). The days-un
 
 A clip that errors, or never produces a picture, is skipped. One bad file does not stop the board.
 
+## Clips
+
+The board plays these in order. `?v=` on each line in `clips.js` is the cache buster. It changed for every file in this set, including the rebuilt `oc01`–`oc12`.
+
+1. `oc01-home-alone-burst-pipe.mp4`
+2. `oc02-elf-boiler-hug.mp4`
+3. `oc03-christmas-vacation-furnace.mp4`
+4. `oc04-jingle-all-the-way-boiler.mp4`
+5. `oc05-grinch-water-heater.mp4`
+6. `oc06-christmas-story-furnace.mp4`
+7. `oc07-die-hard-ductwork.mp4`
+8. `oc08-rudolph-heat-pump.mp4`
+9. `oc09-frosty-frozen-spigot.mp4`
+10. `oc10-charlie-brown-tree-radiator.mp4`
+11. `oc11-nightmare-before-christmas-boiler.mp4`
+12. `oc12-gremlins-leaky-pipe.mp4`
+13. `oc13-polar-express-boiler.mp4`
+14. `oc14-wonderful-life-radiator.mp4`
+15. `oc15-santa-clause-chimney.mp4`
+16. `oc16-scrooge-cold-fireplace.mp4`
+17. `oc17-miracle-34th-water-heater.mp4`
+18. `oc18-krampus-boiler.mp4`
+19. `oc19-love-actually-cue-cards.mp4`
+20. `oc20-heat-miser-boiler.mp4`
+21. `oc21-christmas-chronicles-heat-pump.mp4`
+22. `oc22-scrooged-frozen-thermostat.mp4`
+23. `oc23-christmas-with-the-kranks-roof.mp4`
+24. `oc24-jack-frost-hose-bib.mp4`
+
 ## Add or remove a clip
 
 `clips.js` is the only playlist. The board plays that list from top to bottom. It does not scan the folder.
 
-1. Put a 16:9 file in `assets/clips/` (MP4, WebM, or MOV). 1920×1080 is what the current clips are. Number the name (`oc13-your-title.mp4`) so the order stays obvious.
+1. Put a 16:9 file in `assets/clips/` (MP4, WebM, or MOV). 1920×1080 is what the current clips are. Number the name (`oc25-your-title.mp4`) so the order stays obvious.
 2. Add a line to `window.CLIPS` where that clip should play. To take a clip off the board, delete that line. The file can stay in the folder or go with it.
 3. Commit and push to `main`.
 
@@ -64,7 +93,7 @@ After the scheduled reload the page resumes on the next clip, rather than jumpin
 
 ## Encoding
 
-Every shipped clip is the same shape: 1920×1080, 24 fps, 15.0 seconds, H.264 High profile level 4.1, about 1.2–1.8 Mbps, faststart, plus a silent AAC track. The set is about 30 MB. Desktop Chrome plays that.
+Every shipped clip is the same shape: 1920×1080, 24 fps, 15.0 seconds, H.264 High profile level 4.1, about 1.2–2.2 Mbps, faststart, plus a silent AAC track. The set is about 70 MB. Desktop Chrome plays that.
 
 A lot of TVs only hardware-decode Baseline or Main. High profile with B-frames can stay black, which is what the Halloween board ran into. If this TV does that, re-encode on a computer, put the new file in place of the old one, change `?v=`, and push:
 
