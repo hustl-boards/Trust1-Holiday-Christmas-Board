@@ -185,10 +185,17 @@
     // throws, and a throw here used to reload the Halloween board in a loop.
     Promise.resolve(ret).then(() => {
       if (gen !== generation) return;
+      // Pause can land while play() is still resolving. Leave it paused.
+      if (paused) {
+        try { vid.pause(); } catch (e) {}
+        return;
+      }
       vid.classList.add('on');
       lastGood = Date.now();
-    }).catch(() => {
-      if (gen !== generation) return;
+    }).catch((err) => {
+      if (gen !== generation || paused) return;
+      // Switching clips or pausing aborts the in-flight play(). That is not a bad file.
+      if (err && err.name === 'AbortError') return;
       if (!vid.muted) {
         vid.muted = true;
         wantSound = false;
