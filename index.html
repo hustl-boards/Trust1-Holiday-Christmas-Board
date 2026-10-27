@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#07140f" />
+  <title>3R Christmas Office TV</title>
+  <link rel="stylesheet" href="styles.css?v=20261027a" />
+</head>
+<body>
+  <main id="stage" aria-label="3R Christmas office slideshow">
+    <video id="vid" muted autoplay playsinline preload="metadata"></video>
+    <div id="fx" aria-hidden="true"></div>
+    <div id="fade"></div>
+    <div id="progress"><span></span></div>
+    <div id="countdown" aria-live="polite"></div>
+    <div id="counter" aria-live="polite"></div>
+    <div id="controls">
+      <button id="prev" type="button" aria-label="Previous clip">◀</button>
+      <button id="pause" type="button" aria-label="Pause slideshow">Ⅱ</button>
+      <button id="next" type="button" aria-label="Next clip">▶</button>
+      <button id="sound" type="button" aria-label="Turn sound on">🔇</button>
+      <button id="full" type="button" aria-label="Fullscreen">⛶</button>
+    </div>
+  </main>
+  <script src="clips.js"></script>
+  <script src="app.js?v=20261027a"></script>
+</body>
+</html>
