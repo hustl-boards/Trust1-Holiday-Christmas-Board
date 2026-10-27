@@ -26,21 +26,20 @@ Right arrow or Space: next · Left arrow: previous · P: pause · M: sound on/of
 
 Clips start muted so Chrome and TV browsers allow autoplay. M, or the sound button, turns sound on. The clips in this set are silent.
 
-Hover the picture to see the controls and the clip count (`3 / 24`). The days-until-Christmas chip stays in the corner. On December 25 it reads Merry Christmas. The date is America/New_York, the same clock as the other boards. A light snowfall sits over the picture.
+Hover the picture to see the controls and the clip count (`3 / 24`). The pointer hides again after a few seconds still. The days-until-Christmas chip stays in the corner. On December 25 it reads Merry Christmas. The date is America/New_York, the same clock as the other boards, and it rolls to the next day at midnight. A light snowfall sits over the picture.
 
 ## URL options
 
-- `?reload=4` reloads every 4 hours (the default), after the current clip ends. `?reload=0` turns that off. The board checks once a minute, because some TV browsers drop one long timer.
+- `?reload=4` reloads every 4 hours (the default), after the current clip ends. About 15 minutes later the page reloads even if that clip never ends (`?hardmin=15`). `?reload=0` turns both off. The new page URL carries `?cb=` so the TV picks up a new deploy instead of a cached copy, and it resumes on the next clip.
 - `?maxclip=60` is a hard cap per video, in seconds (default 60). A normal clip ends itself first.
-- `?stall=20` skips a clip with no playback progress for 20 seconds.
-- `?watchdog=90` if the reel makes no progress for 90 seconds, the page reloads once. If it just reloaded and is still stuck, it waits a minute instead of reboot-looping.
+- `?stall=8` skips a clip whose playhead has not moved for 8 seconds (the default). `error`, `stalled`, `abort`, and `emptied` skip too. Three skips in a row reload the page. One bad file does not. `?watchdog=` is an older name for the same stall window.
 - `?shuffle=1` randomizes the order when the page loads.
 - `?slide=3` starts on that clip (1 is the first).
 - `?date=2026-12-25` previews the countdown for that calendar day.
 - `?fresh=1` loads a new page for every clip. Last resort for a TV that still leaks memory.
 - `?debug=1` shows the clip name, uptime, page loads, and the last problem.
 
-A clip that errors, or never produces a picture, is skipped. One bad file does not stop the board.
+A clip that errors, stalls, or never produces a picture is skipped. The loop keeps going. If the network drops, cached clips keep playing and the board does not reload into an offline error page. When the network returns it resumes. Three failures in a row reload the page once; if that just happened, it keeps skipping instead of reboot-looping.
 
 ## Clips
 
@@ -83,11 +82,13 @@ Renaming a file does not change the order. The list does.
 
 When you replace a file and keep the same name, change the `?v=` text on that line (any new string). That is the cache buster, same idea as the Halloween board. Leave `?v=` alone when the bytes did not change, or the TV downloads the clip again for no reason.
 
-`app.js` and `styles.css` are linked with `?v=20261027a`. Bump that text in `index.html` when you change those files so the TV does not keep an old copy. You do not need to touch it when you only edit `clips.js`.
+`app.js` and `styles.css` are linked with `?v=20261027b`. Bump that text in `index.html` when you change those files so the TV does not keep an old copy. You do not need to touch it when you only edit `clips.js`.
 
 ## Keeping the picture moving
 
-One `<video>` element is reused. Each clip is detached (`pause`, clear `src`, `load()`) before the next one so the TV can free the decoder. The snow is a fixed set of flakes, created once.
+One `<video>` element is reused. There is no second preload element. Each clip is detached (`pause`, `src` cleared, `load()`) before the next one so the TV can free the decoder. Listeners are attached once, not per clip. Snow is a fixed 18 flakes, moved by one animation loop, and that loop pauses while the tab is hidden. The countdown is rewritten at most once a minute.
+
+A screen wake lock is requested where the browser allows it, and requested again when the page becomes visible.
 
 After the scheduled reload the page resumes on the next clip, rather than jumping back to the first one.
 
