@@ -1,7 +1,10 @@
 (() => {
-  // Office TV board. One video element is reused. The playlist is clips.js.
-  // There is no GitHub API call. Clips play to the end, muted, so Chrome autoplay works.
+  // Office TV board. One video element, one animation loop, no per-clip listeners.
+  // The playlist is clips.js. There is no GitHub API call.
   const params = new URLSearchParams(location.search);
+  const FLAKES = 18;
+  const FAILURES_BEFORE_RELOAD = 3;
+  const CURSOR_IDLE_MS = 3000;
 
   function num(key, fallback, min, max) {
     if (!params.has(key)) return fallback;
@@ -13,18 +16,22 @@
   }
 
   const maxClip = num('maxclip', 60, 10, 600);
-  const stallSeconds = num('stall', 20, 5, 120);
-  const watchdogSeconds = num('watchdog', 90, 20, 600);
+  // ?watchdog= still works as an alias for the stall window.
+  const stallSeconds = params.has('stall') ? num('stall', 8, 2, 120) : num('watchdog', 8, 2, 120);
   const reloadHours = num('reload', 4, 0, 168);
+  const hardExtraMin = num('hardmin', 15, 0, 240);
   const fresh = params.get('fresh') === '1';
   const debug = params.get('debug') === '1';
+  const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+  const stage = document.getElementById('stage');
   const vid = document.getElementById('vid');
   const bar = document.querySelector('#progress span');
   const counter = document.getElementById('counter');
   const countdown = document.getElementById('countdown');
   const pauseBtn = document.getElementById('pause');
   const soundBtn = document.getElementById('sound');
+  const fx = document.getElementById('fx');
 
   const store = {
     get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
@@ -33,14 +40,14 @@
   if (!store.get('cb_since')) store.set('cb_since', String(Date.now()));
   store.set('cb_loads', String((Number(store.get('cb_loads')) || 0) + 1));
 
-  // The muted property has to be set in script. The HTML attribute alone is not
-  // enough for some TV browsers, and audible autoplay is what they block.
+  // Muted has to be set in script. Audible autoplay is what TV browsers block.
   vid.muted = true;
   vid.defaultMuted = true;
   vid.loop = false;
   vid.playsInline = true;
   try { vid.disablePictureInPicture = true; } catch (e) {}
   let wantSound = false;
+  let retriedMuted = false;
 
   function readClips() {
     const list = window.CLIPS;
@@ -52,7 +59,7 @@
     return out;
   }
 
-  let clips = readClips();
+  const clips = readClips();
   if (params.get('shuffle') === '1') {
     for (let n = clips.length - 1; n > 0; n--) {
       const j = Math.floor(Math.random() * (n + 1));
@@ -70,22 +77,34 @@
   let failedGen = -1;
   let reloading = false;
   let reloadDue = false;
-  let timer = 0;
-  let stallTimer = 0;
-  let lastGood = Date.now();
+  let pendingReload = '';
+  let pendingRecover = '';
+  let mediaLive = false;
+  let armLive = false;
+  let seenPlaying = false;
+  let lastAdvanceAt = Date.now();
   let lastMediaTime = -1;
   let sawFrame = false;
+  let clipStartedAt = Date.now();
   let wakeLock = null;
+  let rafId = 0;
+  let lastSnowAt = 0;
+  let lastBarAt = 0;
+  let lastCountdownAt = 0;
+  let lastWakeAt = 0;
+  let lastDebugAt = 0;
+  let cursorAt = 0;
+  let hiddenAt = 0;
+  let pausedAt = 0;
   const booted = Date.now();
-  const reloadAt = reloadHours > 0 ? Date.now() + reloadHours * 3600 * 1000 : 0;
+  const boundaryAt = reloadHours > 0 ? booted + reloadHours * 3600 * 1000 : 0;
+  const hardAt = boundaryAt ? boundaryAt + hardExtraMin * 60 * 1000 : 0;
+
+  const flakes = new Array(FLAKES);
+  let dbg = null;
 
   function note(msg) {
     store.set('cb_err', new Date().toLocaleTimeString() + ' ' + msg);
-  }
-
-  function clearTimer(id) {
-    if (id) clearTimeout(id);
-    return 0;
   }
 
   function labelOf(src) {
@@ -131,74 +150,100 @@
     return Math.round((xmas - today) / 86400000);
   }
 
-  function paintCountdown() {
-    const days = daysUntilChristmas(activeParts());
-    if (days === 0) countdown.textContent = 'Merry Christmas';
-    else if (days === 1) countdown.textContent = '1 day until Christmas';
-    else countdown.textContent = days + ' days until Christmas';
-    publish();
+  function countdownText(days) {
+    if (days === 0) return 'Merry Christmas';
+    if (days === 1) return '1 day until Christmas';
+    return days + ' days until Christmas';
   }
 
   function publish() {
+    const parts = activeParts();
     window.__board = {
       index: index,
       count: clips.length,
       src: clips.length ? clips[index] : '',
       paused: paused,
-      days: daysUntilChristmas(activeParts())
+      days: daysUntilChristmas(parts),
+      failures: failures
     };
   }
 
+  function paintCountdown() {
+    lastCountdownAt = Date.now();
+    const text = countdownText(daysUntilChristmas(activeParts()));
+    if (countdown.textContent !== text) countdown.textContent = text;
+    publish();
+  }
+
+  function nextIndex() {
+    if (!clips.length) return 0;
+    return (index + 1) % clips.length;
+  }
+
+  // Full navigation. Returns false when we must stay on this page (offline,
+  // or a failure reload that would reboot-loop). The clip loop keeps going.
+  function navigate(reason, resumeAt, failure) {
+    if (reloading) return true;
+    if (navigator.onLine === false) {
+      pendingReload = reason;
+      note('offline defer ' + reason);
+      return false;
+    }
+    if (failure) {
+      const last = Number(store.get('cb_reload_at')) || 0;
+      if (Date.now() - last < 180000) {
+        note('reload held ' + reason);
+        return false;
+      }
+    }
+    reloading = true;
+    pendingReload = '';
+    store.set('cb_reload_at', String(Date.now()));
+    store.set('cb_reason', reason);
+    if (clips.length) store.set('cb_next', String(resumeAt));
+    const url = new URL(location.href);
+    url.searchParams.set('cb', String(Date.now()));
+    location.replace(url.toString());
+    return true;
+  }
+
   function releaseVideo() {
-    // Detach the decoder before the next clip. expectedSrc is cleared first so
-    // the error some TVs fire when src is removed does not count as a bad file.
+    // One element. Drop the decoder before the next file. Events that fire
+    // from this empty load are ignored because mediaLive is false.
+    mediaLive = false;
+    armLive = false;
+    seenPlaying = false;
     expectedSrc = '';
-    vid.onended = null;
-    vid.onerror = null;
-    vid.onplaying = null;
     try { vid.pause(); } catch (e) {}
     vid.classList.remove('on');
     vid.removeAttribute('src');
+    vid.src = '';
     try { vid.load(); } catch (e) {}
   }
 
-  function armStall(gen) {
-    stallTimer = clearTimer(stallTimer);
-    stallTimer = setTimeout(() => {
-      if (gen !== generation || paused) return;
-      recover('stalled ' + labelOf(clips[index]));
-    }, stallSeconds * 1000);
-  }
-
-  function armMax(gen) {
-    timer = clearTimer(timer);
-    timer = setTimeout(() => {
-      if (gen !== generation || paused) return;
-      advance(gen);
-    }, maxClip * 1000);
-  }
-
   function playClip(gen) {
+    if (paused || gen !== generation || reloading) return;
+    if (!wantSound) vid.muted = true;
     let ret;
     try { ret = vid.play(); } catch (e) { ret = Promise.reject(e); }
-    // Older TV browsers return undefined from play(). Calling .then on that
-    // throws, and a throw here used to reload the Halloween board in a loop.
+    // Some TV browsers return undefined from play(). Promise.resolve covers that.
     Promise.resolve(ret).then(() => {
       if (gen !== generation) return;
-      // Pause can land while play() is still resolving. Leave it paused.
       if (paused) {
         try { vid.pause(); } catch (e) {}
         return;
       }
       vid.classList.add('on');
-      lastGood = Date.now();
+      lastAdvanceAt = Date.now();
     }).catch((err) => {
-      if (gen !== generation || paused) return;
-      // Switching clips or pausing aborts the in-flight play(). That is not a bad file.
+      if (gen !== generation || paused || reloading) return;
       if (err && err.name === 'AbortError') return;
-      if (!vid.muted) {
-        vid.muted = true;
+      // Autoplay blocked, or the muted flag did not stick. One muted retry.
+      if (!retriedMuted) {
+        retriedMuted = true;
         wantSound = false;
+        vid.muted = true;
+        vid.defaultMuted = true;
         soundBtn.textContent = '\uD83D\uDD07';
         soundBtn.setAttribute('aria-label', 'Turn sound on');
         playClip(gen);
@@ -208,76 +253,41 @@
     });
   }
 
-  function failureReason(reason) {
-    return reason.indexOf('watchdog') === 0
-      || reason.indexOf('stalled') === 0
-      || reason.indexOf('could not') === 0
-      || reason.indexOf('playback rejected') === 0
-      || reason.indexOf('no frames') === 0
-      || reason.indexOf('no progress') !== -1;
-  }
-
-  function safeReload(reason) {
-    if (reloading) return;
-    note(reason);
-    const last = Number(store.get('cb_reload_at')) || 0;
-    // A clip that kills the page must not reboot the TV every few seconds.
-    if (failureReason(reason) && Date.now() - last < 180000) {
-      timer = clearTimer(timer);
-      stallTimer = clearTimer(stallTimer);
-      failures = 0;
-      timer = setTimeout(() => {
-        timer = 0;
-        if (!reloading) show(0);
-      }, 60000);
-      return;
-    }
-    reloading = true;
-    store.set('cb_reload_at', String(Date.now()));
-    store.set('cb_reason', reason);
-    if (clips.length) store.set('cb_next', String((index + 1) % clips.length));
-    location.reload();
-  }
-
   function recover(reason) {
-    const gen = generation;
-    if (failedGen === gen || reloading) return;
-    failedGen = gen;
+    if (reloading || pendingRecover) return;
+    if (failedGen === generation) return;
+    failedGen = generation;
+    pendingRecover = reason;
     note(reason);
-    setTimeout(() => {
-      if (generation !== gen || reloading) return;
-      if (reloadDue) {
-        safeReload('scheduled');
-        return;
-      }
-      failures += 1;
-      if (!clips.length) return;
-      if (failures >= clips.length) {
-        failures = 0;
-        safeReload('watchdog ' + reason);
-        return;
-      }
-      goTo(index + 1);
-    }, 0);
+    startLoop();
+  }
+
+  function applyRecover(reason) {
+    if (failedGen !== generation || reloading) return;
+    failures += 1;
+    publish();
+    const resumeAt = nextIndex();
+    if (failures >= FAILURES_BEFORE_RELOAD) {
+      failures = 0;
+      if (navigate('failures ' + reason, resumeAt, true)) return;
+    } else if (reloadDue) {
+      if (navigate('scheduled', resumeAt, false)) return;
+    }
+    goTo(index + 1);
   }
 
   function goTo(n) {
     if (fresh && clips.length > 1) {
       const next = ((n % clips.length) + clips.length) % clips.length;
-      store.set('cb_next', String(next));
-      location.reload();
-      return;
+      if (navigate('fresh', next, false)) return;
     }
     show(n);
   }
 
-  function advance(gen, manual) {
+  function advance(gen) {
     if (gen != null && gen !== generation) return;
     if (!clips.length || reloading) return;
-    if (!manual && reloadDue) {
-      safeReload('scheduled');
-      return;
-    }
+    if (reloadDue && navigate('scheduled', nextIndex(), false)) return;
     goTo(index + 1);
   }
 
@@ -286,9 +296,9 @@
       showEmpty();
       return;
     }
-    const gen = ++generation;
-    timer = clearTimer(timer);
-    stallTimer = clearTimer(stallTimer);
+    pendingRecover = '';
+    generation += 1;
+    const gen = generation;
     releaseVideo();
     index = ((n % clips.length) + clips.length) % clips.length;
     const src = clips[index];
@@ -298,42 +308,57 @@
     bar.style.width = '0%';
     lastMediaTime = -1;
     sawFrame = false;
+    lastAdvanceAt = Date.now();
+    clipStartedAt = lastAdvanceAt;
+    retriedMuted = false;
     vid.muted = !wantSound;
     publish();
-
-    vid.onended = () => {
-      if (generation !== gen) return;
-      if ((vid.getAttribute('src') || '') !== expectedSrc) return;
-      failures = 0;
-      lastGood = Date.now();
-      advance(gen);
-    };
-    vid.onerror = () => {
-      const current = vid.getAttribute('src') || '';
-      if (!current || current !== expectedSrc || generation !== gen) return;
-      recover('could not load ' + labelOf(current));
-    };
-    vid.onplaying = () => {
-      if (generation !== gen) return;
-      vid.classList.add('on');
-      lastGood = Date.now();
-    };
     vid.src = src;
+    armLive = true;
     if (paused) return;
     playClip(gen);
-    armMax(gen);
-    armStall(gen);
   }
 
   function showEmpty() {
-    timer = clearTimer(timer);
-    stallTimer = clearTimer(stallTimer);
     releaseVideo();
     counter.textContent = window.CLIPS ? 'No clips yet' : 'Playlist missing';
     counter.style.opacity = '1';
     bar.style.width = '0%';
     publish();
   }
+
+  function onEnded() {
+    if (!mediaLive || reloading) return;
+    if ((vid.getAttribute('src') || '') !== expectedSrc) return;
+    failures = 0;
+    lastAdvanceAt = Date.now();
+    publish();
+    advance(generation);
+  }
+
+  function onPlaying() {
+    if ((vid.getAttribute('src') || '') !== expectedSrc) return;
+    seenPlaying = true;
+    vid.classList.add('on');
+    lastAdvanceAt = Date.now();
+  }
+
+  function onProblem(ev) {
+    if (!mediaLive || reloading) return;
+    const current = vid.getAttribute('src') || '';
+    if (!current || current !== expectedSrc) return;
+    if (ev.type !== 'error' && !seenPlaying) return;
+    // A brief stall while the playhead is still moving is buffering, not a dead clip.
+    if (ev.type === 'stalled' && Date.now() - lastAdvanceAt < 2000) return;
+    recover(ev.type + ' ' + labelOf(current));
+  }
+
+  vid.addEventListener('ended', onEnded);
+  vid.addEventListener('playing', onPlaying);
+  vid.addEventListener('error', onProblem);
+  vid.addEventListener('stalled', onProblem);
+  vid.addEventListener('abort', onProblem);
+  vid.addEventListener('emptied', onProblem);
 
   function togglePause() {
     paused = !paused;
@@ -342,26 +367,30 @@
     publish();
     if (!clips.length) return;
     if (paused) {
-      timer = clearTimer(timer);
-      stallTimer = clearTimer(stallTimer);
+      pausedAt = Date.now();
+      lastAdvanceAt = pausedAt;
       try { vid.pause(); } catch (e) {}
-      if (reloadDue) safeReload('scheduled');
       return;
     }
+    if (pausedAt) {
+      clipStartedAt += Date.now() - pausedAt;
+      pausedAt = 0;
+    }
+    lastAdvanceAt = Date.now();
+    retriedMuted = false;
     playClip(generation);
-    armMax(generation);
-    armStall(generation);
   }
 
   function toggleSound() {
     wantSound = !wantSound;
+    retriedMuted = !wantSound;
     vid.muted = !wantSound;
     soundBtn.textContent = vid.muted ? '\uD83D\uDD07' : '\uD83D\uDD0A';
     soundBtn.setAttribute('aria-label', vid.muted ? 'Turn sound on' : 'Turn sound off');
     if (wantSound && !paused && clips.length) playClip(generation);
   }
 
-  document.getElementById('next').onclick = () => advance(generation, true);
+  document.getElementById('next').onclick = () => advance(generation);
   document.getElementById('prev').onclick = () => show(index - 1);
   pauseBtn.onclick = togglePause;
   soundBtn.onclick = (e) => {
@@ -378,7 +407,7 @@
     const key = (e.key || '').toLowerCase();
     if (key === 'arrowright' || key === ' ') {
       e.preventDefault();
-      advance(generation, true);
+      advance(generation);
     } else if (key === 'arrowleft') {
       e.preventDefault();
       show(index - 1);
@@ -387,19 +416,38 @@
     else if (key === 'f') document.getElementById('full').click();
   });
 
-  function snow() {
-    const fx = document.getElementById('fx');
-    for (let n = 0; n < 18; n++) {
+  function pokeCursor() {
+    cursorAt = Date.now();
+    if (!stage.classList.contains('awake')) stage.classList.add('awake');
+  }
+  stage.addEventListener('pointermove', pokeCursor);
+  stage.addEventListener('pointerdown', pokeCursor);
+
+  function buildSnow() {
+    for (let n = 0; n < FLAKES; n++) {
       const el = document.createElement('span');
       el.className = 'flake';
       el.style.left = ((n * 5.7) % 100) + '%';
-      el.style.animationDuration = (14 + (n % 9)) + 's';
-      el.style.animationDelay = (-n * 0.85) + 's';
-      el.style.opacity = String(0.28 + (n % 5) * 0.1);
+      el.style.opacity = reduceMotion ? '0' : String(0.28 + (n % 5) * 0.1);
       const size = (4 + (n % 4) * 2) + 'px';
       el.style.width = size;
       el.style.height = size;
       fx.appendChild(el);
+      flakes[n] = {
+        el: el,
+        dur: 14 + (n % 9),
+        phase: n * 0.85
+      };
+    }
+  }
+
+  function stepSnow(now) {
+    if (reduceMotion) return;
+    const t = now / 1000;
+    for (let n = 0; n < FLAKES; n++) {
+      const flake = flakes[n];
+      const p = ((t + flake.phase) % flake.dur) / flake.dur;
+      flake.el.style.transform = 'translateY(' + (-8 + p * 118).toFixed(2) + 'vh)';
     }
   }
 
@@ -411,78 +459,160 @@
     } catch (e) {}
   }
 
-  function onVisible() {
-    if (document.hidden) return;
-    wake();
-    if (!paused && expectedSrc && vid.paused && !reloading) playClip(generation);
-  }
-
-  // Tick once a minute instead of one multi-hour timeout. Some TV browsers drop long timers.
-  function watchReload() {
-    if (reloadAt && !reloadDue && Date.now() >= reloadAt) {
-      reloadDue = true;
-      if (paused || !clips.length) safeReload('scheduled');
-    }
-    setTimeout(watchReload, 60 * 1000);
-  }
-
-  addEventListener('online', () => {
-    if (Date.now() - booted < 5000 || paused || !clips.length || reloading) return;
-    if (vid.error || vid.networkState === 3) show(index);
-  });
-
-  // Log script errors. Reloading here caused a reboot loop when play() threw.
-  window.onerror = (msg) => { note('error: ' + msg); };
-
-  setInterval(() => {
-    if (reloading) return;
-    if (paused || !clips.length || document.hidden) {
-      lastGood = Date.now();
-      return;
-    }
-    const duration = vid.duration;
-    if (duration && isFinite(duration) && duration > 0) {
-      bar.style.width = Math.min(100, (100 * vid.currentTime) / duration) + '%';
-    }
-    if (vid.currentTime > lastMediaTime + 0.2) {
-      lastMediaTime = vid.currentTime;
-      lastGood = Date.now();
-      failures = 0;
-      armStall(generation);
-      // Time can move while the decoder paints nothing. A black picture is a bad clip.
-      if (!sawFrame && vid.currentTime > 1) {
-        if (vid.videoWidth > 0) sawFrame = true;
-        else recover('no frames ' + labelOf(clips[index]));
+  function stepPlayer(now) {
+    const wall = Date.now();
+    if (armLive) {
+      armLive = false;
+      mediaLive = true;
+      if (vid.error && (vid.getAttribute('src') || '') === expectedSrc && expectedSrc) {
+        recover('error ' + labelOf(expectedSrc));
       }
     }
-  }, 250);
 
-  setInterval(() => {
-    if (paused || !clips.length || document.hidden || reloading) {
-      lastGood = Date.now();
-      return;
-    }
-    if (Date.now() - lastGood > watchdogSeconds * 1000) {
-      lastGood = Date.now();
-      recover('no progress');
-    }
-  }, 5000);
+    if (wall - lastCountdownAt >= 60000) paintCountdown();
 
-  if (debug) {
-    const dbg = document.createElement('div');
-    dbg.style.cssText = 'position:fixed;left:28px;bottom:28px;z-index:9;background:rgba(0,0,0,.75);color:#f4e4b0;font:16px/1.4 monospace;padding:8px 10px;border-radius:6px;white-space:pre';
-    document.body.appendChild(dbg);
-    setInterval(() => {
-      const up = Math.round((Date.now() - Number(store.get('cb_since'))) / 60000);
+    if (cursorAt && stage.classList.contains('awake') && wall - cursorAt > CURSOR_IDLE_MS) {
+      stage.classList.remove('awake');
+    }
+
+    if (boundaryAt && !reloadDue && wall >= boundaryAt) reloadDue = true;
+    if (hardAt && wall >= hardAt) {
+      if (navigate('hard', nextIndex(), false)) return;
+    }
+
+    if (wall - lastWakeAt >= 60000) {
+      lastWakeAt = wall;
+      wake();
+    }
+
+    if (debug && dbg && wall - lastDebugAt >= 1000) {
+      lastDebugAt = wall;
+      const up = Math.round((wall - Number(store.get('cb_since'))) / 60000);
       dbg.textContent = 'clip: ' + (clips.length ? (index + 1) + '/' + clips.length + '  ' + labelOf(clips[index]) : 'none')
         + '\nrunning: ' + up + ' min'
         + '\npage loads: ' + store.get('cb_loads')
+        + '\nfailures: ' + failures
         + '\nlast problem: ' + (store.get('cb_err') || 'none');
-    }, 1000);
+    }
+
+    if (paused || !clips.length || reloading || !expectedSrc) {
+      lastAdvanceAt = wall;
+      return;
+    }
+
+    if (now - lastBarAt >= 250) {
+      lastBarAt = now;
+      const duration = vid.duration;
+      if (duration && isFinite(duration) && duration > 0) {
+        bar.style.width = Math.min(100, (100 * vid.currentTime) / duration) + '%';
+      }
+      if (vid.currentTime > lastMediaTime + 0.05) {
+        lastMediaTime = vid.currentTime;
+        lastAdvanceAt = wall;
+        if (vid.currentTime > 0.4) {
+          if (failures) {
+            failures = 0;
+            publish();
+          }
+        }
+        if (!sawFrame && vid.currentTime > 1 && vid.readyState >= 2) {
+          if (vid.videoWidth > 0) sawFrame = true;
+          else recover('no frames ' + labelOf(expectedSrc));
+        }
+      }
+    }
+
+    if (wall - clipStartedAt > maxClip * 1000) {
+      advance(generation);
+      return;
+    }
+    if (wall - lastAdvanceAt > stallSeconds * 1000) {
+      lastAdvanceAt = wall;
+      recover('frozen ' + labelOf(expectedSrc));
+    }
   }
 
+  function frame(now) {
+    rafId = 0;
+    if (document.hidden || reloading) return;
+    if (pendingRecover) {
+      const reason = pendingRecover;
+      pendingRecover = '';
+      applyRecover(reason);
+      if (reloading || document.hidden) return;
+    }
+    if (!reduceMotion && now - lastSnowAt >= 32) {
+      lastSnowAt = now;
+      stepSnow(now);
+    }
+    stepPlayer(now);
+    if (!reloading && !document.hidden) rafId = requestAnimationFrame(frame);
+  }
+
+  function startLoop() {
+    if (rafId || document.hidden || reloading) return;
+    rafId = requestAnimationFrame(frame);
+  }
+
+  function shiftClocks(from) {
+    if (!from) return;
+    const held = Date.now() - from;
+    clipStartedAt += held;
+    lastAdvanceAt += held;
+  }
+
+  function onVisible() {
+    if (document.hidden) {
+      if (rafId) cancelAnimationFrame(rafId);
+      rafId = 0;
+      hiddenAt = Date.now();
+      lastAdvanceAt = hiddenAt;
+      return;
+    }
+    shiftClocks(hiddenAt);
+    hiddenAt = 0;
+    wake();
+    if (Date.now() - lastCountdownAt >= 60000) paintCountdown();
+    if (pendingReload || (hardAt && Date.now() >= hardAt)) {
+      navigate(pendingReload || 'hard', nextIndex(), false);
+      return;
+    }
+    if (!paused && expectedSrc && vid.paused && !reloading) playClip(generation);
+    startLoop();
+  }
+
+  addEventListener('online', () => {
+    if (reloading) return;
+    if (pendingReload || (hardAt && Date.now() >= hardAt)) {
+      navigate(pendingReload || 'hard', nextIndex(), false);
+      return;
+    }
+    if (paused || !clips.length) return;
+    if (!expectedSrc || vid.error || vid.networkState === 3) show(index);
+    else if (vid.paused) playClip(generation);
+    startLoop();
+  });
+
+  // Log only. Reloading from here used to reboot-loop when play() threw.
+  window.onerror = (msg) => { note('error: ' + msg); };
+
+  document.addEventListener('visibilitychange', onVisible);
+
+  if (debug) {
+    dbg = document.createElement('div');
+    dbg.style.cssText = 'position:fixed;left:28px;bottom:28px;z-index:9;background:rgba(0,0,0,.75);color:#f4e4b0;font:16px/1.4 monospace;padding:8px 10px;border-radius:6px;white-space:pre';
+    document.body.appendChild(dbg);
+  }
+
+  buildSnow();
+  paintCountdown();
+  lastWakeAt = Date.now();
+  wake();
+  startLoop();
+
   function startIndex() {
-    if (params.has('slide')) {
+    // ?cb= means this load is a board reload. Resume at cb_next, not ?slide=.
+    if (!params.has('cb') && params.has('slide')) {
       const q = Number(params.get('slide'));
       if (isFinite(q)) return Math.max(1, Math.floor(q)) - 1;
     }
@@ -494,14 +624,6 @@
     }
     return 0;
   }
-
-  snow();
-  paintCountdown();
-  setInterval(paintCountdown, 60 * 1000);
-  wake();
-  document.addEventListener('visibilitychange', onVisible);
-  setInterval(wake, 60000);
-  watchReload();
 
   if (!clips.length) showEmpty();
   else show(startIndex());
