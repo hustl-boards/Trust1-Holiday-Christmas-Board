@@ -26,7 +26,7 @@ Right arrow or Space: next · Left arrow: previous · P: pause · M: sound on/of
 
 Clips start muted so Chrome and TV browsers allow autoplay. M, or the sound button, turns sound on. The clips in this set are silent.
 
-Hover the picture to see the controls and the clip count (`3 / 24`). The pointer hides again after a few seconds still. The days-until-Christmas chip stays in the corner. On December 25 it reads Merry Christmas. The date is America/New_York, the same clock as the other boards, and it rolls to the next day at midnight. A light snowfall sits over the picture.
+Hover the picture to see the controls and the clip count (`3 / 24`). The pointer hides again after a few seconds still. The countdown sits in the top-right corner, clear of the titles on the left of each clip. It ticks days, hours, minutes, and seconds until 12:00 AM Christmas morning, America/New_York, no matter what timezone the TV is set to. On December 25 it reads Merry Christmas from the 3R family. After that day it counts down to the next Christmas. A light snowfall sits over the picture.
 
 ## URL options
 
@@ -35,7 +35,7 @@ Hover the picture to see the controls and the clip count (`3 / 24`). The pointer
 - `?stall=8` skips a clip whose playhead has not moved for 8 seconds (the default). `error`, `stalled`, `abort`, and `emptied` skip too. Three skips in a row reload the page. One bad file does not. `?watchdog=` is an older name for the same stall window.
 - `?shuffle=1` randomizes the order when the page loads.
 - `?slide=3` starts on that clip (1 is the first).
-- `?date=2026-12-25` previews the countdown for that calendar day.
+- `?date=2026-12-25` previews the countdown as of 12:00 AM America/New_York at the start of that calendar day.
 - `?fresh=1` loads a new page for every clip. Last resort for a TV that still leaks memory.
 - `?debug=1` shows the clip name, uptime, page loads, and the last problem.
 
@@ -82,11 +82,11 @@ Renaming a file does not change the order. The list does.
 
 When you replace a file and keep the same name, change the `?v=` text on that line (any new string). That is the cache buster, same idea as the Halloween board. Leave `?v=` alone when the bytes did not change, or the TV downloads the clip again for no reason.
 
-`app.js` and `styles.css` are linked with `?v=20261027b`. Bump that text in `index.html` when you change those files so the TV does not keep an old copy. You do not need to touch it when you only edit `clips.js`.
+`app.js` and `styles.css` are linked with `?v=20261028a`. Bump that text in `index.html` when you change those files so the TV does not keep an old copy. You do not need to touch it when you only edit `clips.js`.
 
 ## Keeping the picture moving
 
-One `<video>` element is reused. There is no second preload element. Each clip is detached (`pause`, `src` cleared, `load()`) before the next one so the TV can free the decoder. Listeners are attached once, not per clip. Snow is a fixed 18 flakes, moved by one animation loop, and that loop pauses while the tab is hidden. The countdown is rewritten at most once a minute.
+One `<video>` element is reused. There is no second preload element. Each clip is detached (`pause`, `src` cleared, `load()`) before the next one so the TV can free the decoder. Listeners are attached once, not per clip. Snow is a fixed 18 flakes, moved by one animation loop, and that loop pauses while the tab is hidden. The countdown is a single one-second interval. It reads the Eastern clock on each tick, so a scheduled reload does not lose the time, and the box size stays fixed so the picture does not shift.
 
 A screen wake lock is requested where the browser allows it, and requested again when the page becomes visible.
 

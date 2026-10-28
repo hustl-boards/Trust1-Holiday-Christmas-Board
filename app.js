@@ -90,7 +90,6 @@
   let rafId = 0;
   let lastSnowAt = 0;
   let lastBarAt = 0;
-  let lastCountdownAt = 0;
   let lastWakeAt = 0;
   let lastDebugAt = 0;
   let cursorAt = 0;
@@ -113,15 +112,19 @@
     return parts[parts.length - 1] || src || 'clip';
   }
 
+  let nyFmt = null;
+
   function nyParts(date) {
     try {
-      const fmt = new Intl.DateTimeFormat('en-US', {
-        timeZone: 'America/New_York',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit'
-      });
-      const bits = fmt.formatToParts(date);
+      if (!nyFmt) {
+        nyFmt = new Intl.DateTimeFormat('en-US', {
+          timeZone: 'America/New_York',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit'
+        });
+      }
+      const bits = nyFmt.formatToParts(date);
       const grab = (type) => {
         for (let n = 0; n < bits.length; n++) {
           if (bits[n].type === type) return Number(bits[n].value);
@@ -150,10 +153,94 @@
     return Math.round((xmas - today) / 86400000);
   }
 
-  function countdownText(days) {
-    if (days === 0) return 'Merry Christmas';
-    if (days === 1) return '1 day until Christmas';
-    return days + ' days until Christmas';
+  // 12:00 AM America/New_York on a civil date, as a UTC instant.
+  // Resolved from the timezone database so the TV's own zone does not matter.
+  function wallClockUtc(y, m, d, h, mi, s) {
+    const want = Date.UTC(y, m - 1, d, h, mi, s);
+    let utc = want;
+    let fmt;
+    try {
+      fmt = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/New_York',
+        hourCycle: 'h23',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      });
+    } catch (e) {
+      return Date.UTC(y, m - 1, d, h + 5, mi, s);
+    }
+    for (let n = 0; n < 4; n++) {
+      const bits = fmt.formatToParts(new Date(utc));
+      const grab = (type) => {
+        for (let i = 0; i < bits.length; i++) {
+          if (bits[i].type === type) return Number(bits[i].value);
+        }
+        return 0;
+      };
+      let hour = grab('hour');
+      if (hour === 24) hour = 0;
+      const got = Date.UTC(grab('year'), grab('month') - 1, grab('day'), hour, grab('minute'), grab('second'));
+      const delta = got - want;
+      if (delta === 0) return utc;
+      utc -= delta;
+    }
+    return utc;
+  }
+
+  const christmasStartCache = Object.create(null);
+
+  function christmasStart(year) {
+    if (christmasStartCache[year] == null) {
+      christmasStartCache[year] = wallClockUtc(year, 12, 25, 0, 0, 0);
+    }
+    return christmasStartCache[year];
+  }
+
+  function frozenNow() {
+    const raw = params.get('date');
+    if (!raw) return 0;
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+    if (!match) return 0;
+    return wallClockUtc(Number(match[1]), Number(match[2]), Number(match[3]), 0, 0, 0);
+  }
+
+  const FROZEN_NOW = frozenNow();
+
+  function clockNow() {
+    return FROZEN_NOW || Date.now();
+  }
+
+  function pad2(n) {
+    return (n < 10 ? '0' : '') + n;
+  }
+
+  function countdownMessage(ms) {
+    const parts = nyParts(new Date(ms));
+    if (parts.m === 12 && parts.d === 25) return 'Merry Christmas from the 3R family';
+    let year = parts.y;
+    if (parts.m === 12 && parts.d > 25) year += 1;
+    let left = christmasStart(year) - ms;
+    if (left < 0) left = 0;
+    const total = Math.floor(left / 1000);
+    const days = Math.floor(total / 86400);
+    const hours = Math.floor((total % 86400) / 3600);
+    const mins = Math.floor((total % 3600) / 60);
+    const secs = total % 60;
+    return days + 'd ' + pad2(hours) + 'h ' + pad2(mins) + 'm ' + pad2(secs) + 's until Christmas';
+  }
+
+  let shownCountdown = '';
+
+  function paintCountdown() {
+    const text = countdownMessage(clockNow());
+    if (text === shownCountdown) return;
+    shownCountdown = text;
+    countdown.textContent = text;
+    publish();
   }
 
   function publish() {
@@ -166,13 +253,6 @@
       days: daysUntilChristmas(parts),
       failures: failures
     };
-  }
-
-  function paintCountdown() {
-    lastCountdownAt = Date.now();
-    const text = countdownText(daysUntilChristmas(activeParts()));
-    if (countdown.textContent !== text) countdown.textContent = text;
-    publish();
   }
 
   function nextIndex() {
@@ -469,8 +549,6 @@
       }
     }
 
-    if (wall - lastCountdownAt >= 60000) paintCountdown();
-
     if (cursorAt && stage.classList.contains('awake') && wall - cursorAt > CURSOR_IDLE_MS) {
       stage.classList.remove('awake');
     }
@@ -572,7 +650,7 @@
     shiftClocks(hiddenAt);
     hiddenAt = 0;
     wake();
-    if (Date.now() - lastCountdownAt >= 60000) paintCountdown();
+    paintCountdown();
     if (pendingReload || (hardAt && Date.now() >= hardAt)) {
       navigate(pendingReload || 'hard', nextIndex(), false);
       return;
@@ -606,6 +684,16 @@
 
   buildSnow();
   paintCountdown();
+  // One interval for the life of the page. A scheduled reload starts a fresh one.
+  let countdownTimer = 0;
+  function startCountdown() {
+    if (countdownTimer) return;
+    countdownTimer = setInterval(() => {
+      if (document.hidden) return;
+      paintCountdown();
+    }, 1000);
+  }
+  startCountdown();
   lastWakeAt = Date.now();
   wake();
   startLoop();
