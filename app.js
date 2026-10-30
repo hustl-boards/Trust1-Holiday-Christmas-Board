@@ -32,41 +32,6 @@
   const pauseBtn = document.getElementById('pause');
   const soundBtn = document.getElementById('sound');
   const fx = document.getElementById('fx');
-  const brand = document.getElementById('brand');
-  const logo = document.getElementById('logo');
-
-  // Lower-left plate, in 1920x1080 source pixels. It covers the burned-in
-  // mark, phone, and pitch. Tops sit under the holiday headline.
-  const COVER_X = 40;
-  const COVER_W = 730;
-  const COVER_BOTTOM = 1054;
-  const COVER_TOP = {
-    'oc01-home-alone-burst-pipe.mp4': 612,
-    'oc02-elf-boiler-hug.mp4': 546,
-    'oc03-christmas-vacation-furnace.mp4': 580,
-    'oc04-jingle-all-the-way-boiler.mp4': 584,
-    'oc05-grinch-water-heater.mp4': 576,
-    'oc06-christmas-story-furnace.mp4': 596,
-    'oc07-die-hard-ductwork.mp4': 615,
-    'oc08-rudolph-heat-pump.mp4': 549,
-    'oc09-frosty-frozen-spigot.mp4': 578,
-    'oc10-charlie-brown-tree-radiator.mp4': 577,
-    'oc11-nightmare-before-christmas-boiler.mp4': 591,
-    'oc12-gremlins-leaky-pipe.mp4': 613,
-    'oc13-polar-express-boiler.mp4': 558,
-    'oc14-wonderful-life-radiator.mp4': 512,
-    'oc15-santa-clause-chimney.mp4': 600,
-    'oc16-scrooge-cold-fireplace.mp4': 616,
-    'oc17-miracle-34th-water-heater.mp4': 580,
-    'oc18-krampus-boiler.mp4': 576,
-    'oc19-love-actually-cue-cards.mp4': 636,
-    'oc20-heat-miser-boiler.mp4': 610,
-    'oc21-christmas-chronicles-heat-pump.mp4': 358,
-    'oc22-scrooged-frozen-thermostat.mp4': 511,
-    'oc23-christmas-with-the-kranks-roof.mp4': 550,
-    'oc24-jack-frost-hose-bib.mp4': 569
-  };
-
   const store = {
     get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
     set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
@@ -122,8 +87,6 @@
   let clipStartedAt = Date.now();
   let wakeLock = null;
   let wakePending = false;
-  let lastPlaceAt = 0;
-  let lastPlaceKey = '';
   let rafId = 0;
   let countdownTimer = 0;
   let lastSnowAt = 0;
@@ -259,61 +222,6 @@
     countdown.textContent = text;
     countdown.classList.toggle('greeting', text === 'Merry Christmas from Trust 1 Services');
     publish();
-  }
-
-  function contentRect() {
-    const el = vid.getBoundingClientRect();
-    const vw = vid.videoWidth || 1920;
-    const vh = vid.videoHeight || 1080;
-    if (!el.width || !el.height || !vw || !vh) return null;
-    const scale = Math.min(el.width / vw, el.height / vh);
-    const dw = vw * scale;
-    const dh = vh * scale;
-    return {
-      left: el.left + (el.width - dw) / 2,
-      top: el.top + (el.height - dh) / 2,
-      width: dw,
-      height: dh
-    };
-  }
-
-  function placeBox(el, rect, box) {
-    const sx = rect.width / 1920;
-    const sy = rect.height / 1080;
-    el.style.left = (rect.left + box.x * sx) + 'px';
-    el.style.top = (rect.top + box.y * sy) + 'px';
-    el.style.width = (box.w * sx) + 'px';
-    el.style.height = (box.h * sy) + 'px';
-  }
-
-  function placeBrand() {
-    if (!brand) return;
-    if (!clips.length || !expectedSrc) {
-      brand.classList.remove('on');
-      lastPlaceKey = '';
-      return;
-    }
-    const rect = contentRect();
-    if (!rect) return;
-    const file = labelOf(expectedSrc);
-    const top = COVER_TOP[file] || 548;
-    const key = rect.left.toFixed(1) + ',' + rect.top.toFixed(1) + ','
-      + rect.width.toFixed(1) + ',' + rect.height.toFixed(1) + ',' + top
-      + ',' + window.innerWidth + ',' + window.innerHeight;
-    if (key === lastPlaceKey) return;
-    placeBox(brand, rect, { x: COVER_X, y: top, w: COVER_W, h: COVER_BOTTOM - top });
-    brand.classList.add('on');
-    const box = brand.getBoundingClientRect();
-    if (box.width < 2 || box.height < 2) return;
-    lastPlaceKey = key;
-    const safeX = window.innerWidth * 0.05;
-    const safeY = window.innerHeight * 0.05;
-    const padL = Math.min(box.width * 0.2, Math.max(box.width * 0.035, Math.ceil(safeX - box.left)));
-    const padR = Math.min(box.width * 0.12, Math.max(box.width * 0.04, 16));
-    const padB = Math.min(box.height * 0.18, Math.max(box.height * 0.04, Math.ceil(safeY - (window.innerHeight - box.bottom))));
-    const padT = Math.min(box.height * 0.12, Math.max(box.height * 0.03, 12));
-    brand.style.padding = Math.round(padT) + 'px ' + Math.round(padR) + 'px '
-      + Math.round(padB) + 'px ' + Math.round(padL) + 'px';
   }
 
   function publish() {
@@ -468,14 +376,12 @@
     publish();
     vid.src = src;
     armLive = true;
-    placeBrand();
     if (paused) return;
     playClip(gen);
   }
 
   function showEmpty() {
     releaseVideo();
-    placeBrand();
     counter.textContent = window.CLIPS ? 'No clips yet' : 'Playlist missing';
     counter.style.opacity = '1';
     bar.style.width = '0%';
@@ -653,11 +559,6 @@
       wake();
     }
 
-    if (wall - lastPlaceAt >= 500) {
-      lastPlaceAt = wall;
-      placeBrand();
-    }
-
     if (debug && dbg && wall - lastDebugAt >= 1000) {
       lastDebugAt = wall;
       const up = Math.round((wall - Number(store.get('cb_since'))) / 60000);
@@ -755,8 +656,6 @@
     wake();
     paintCountdown();
     startCountdown();
-    lastPlaceKey = '';
-    placeBrand();
     if (pendingReload || (hardAt && Date.now() >= hardAt)) {
       navigate(pendingReload || 'hard', nextIndex(), false);
       return;
@@ -790,11 +689,6 @@
     releaseVideo();
   });
 
-  if (logo) logo.addEventListener('error', () => { logo.remove(); });
-  addEventListener('resize', () => {
-    lastPlaceKey = '';
-    placeBrand();
-  });
   addEventListener('pageshow', (ev) => {
     if (!ev.persisted) return;
     wake();
@@ -806,8 +700,6 @@
     }
     if (!expectedSrc) show(index);
     else if (!paused && vid.paused) playClip(generation);
-    lastPlaceKey = '';
-    placeBrand();
     startLoop();
   });
 
