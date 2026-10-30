@@ -1,10 +1,12 @@
-# 3R Christmas Office TV
+# Trust 1 Services Christmas Office TV
 
-Static GitHub Pages slideshow for the office TV. Twenty-four silent 15-second clips play in order, each through to the end, then the loop starts over.
+Static GitHub Pages slideshow for the Trust 1 Services office TV. Trust 1 Services is Plumbing, Heating and Air Conditioning, in Quincy and Hanover, Massachusetts. Twenty-four silent 15-second holiday clips play in order, each through to the end, then the loop starts over.
 
-The TV opens <https://ross680.github.io/Christmas-Office-Board/>.
+The page is served from `main` at the repo root:
 
-It follows the same full-screen board as the [Motivational Board](https://github.com/ross680/Motivational-Board) and the [Halloween Board](https://github.com/ross680/Halloween-Board): one stage, a thin progress bar, hover controls, a screen wake lock, and a reload so a TV left on overnight picks up changes. Clips live in `assets/clips/`, the same kind of folder the Halloween board uses.
+<https://hustl-boards.github.io/Trust1-Holiday-Christmas-Board/>
+
+One stage, a thin progress bar, hover controls, a screen wake lock, and a reload so a TV left on picks up changes. Clips live in `assets/clips/`.
 
 ## Publish on GitHub Pages
 
@@ -14,7 +16,7 @@ The page is a normal static site. It does not call the GitHub API.
 2. In GitHub: **Settings → Pages**.
 3. Under **Build and deployment**, set **Source** to **Deploy from a branch**.
 4. Branch: **main**. Folder: **/** (root).
-5. Open <https://ross680.github.io/Christmas-Office-Board/> on the TV browser.
+5. Open the Pages URL on the TV browser.
 
 Pages can take a minute after the push. The TV may keep the previous `index.html` for about 10 minutes. The board also reloads itself every 4 hours, after the current clip finishes, so a new playlist shows up on its own.
 
@@ -26,7 +28,9 @@ Right arrow or Space: next · Left arrow: previous · P: pause · M: sound on/of
 
 Clips start muted so Chrome and TV browsers allow autoplay. M, or the sound button, turns sound on. The clips in this set are silent.
 
-Hover the picture to see the controls and the clip count (`3 / 24`). The pointer hides again after a few seconds still. The countdown sits in the top-right corner, clear of the titles on the left of each clip. It ticks days, hours, minutes, and seconds until 12:00 AM Christmas morning, America/New_York, no matter what timezone the TV is set to. On December 25 it reads Merry Christmas from the 3R family. After that day it counts down to the next Christmas. A light snowfall sits over the picture.
+Hover the picture to see the controls and the clip count (`3 / 24`). The pointer hides again after a few seconds still. The countdown sits in the top-right corner, clear of the titles on the left of each clip. It ticks days, hours, minutes, and seconds until 12:00 AM Christmas morning, America/New_York, no matter what timezone the TV is set to. On December 25 it reads Merry Christmas from Trust 1 Services. After that day it counts down to the next Christmas. A light snowfall sits over the picture.
+
+The Trust 1 Services logo sits on a dark plate in the lower left of each clip, so the gold mark stays easy to read. The holiday headlines on the clips stay visible. Logo files are `assets/trust1-logo.svg` and `assets/trust1-logo.png`.
 
 ## URL options
 
@@ -43,7 +47,7 @@ A clip that errors, stalls, or never produces a picture is skipped. The loop kee
 
 ## Clips
 
-The board plays these in order. `?v=` on each line in `clips.js` is the cache buster. It changed for every file in this set, including the rebuilt `oc01`–`oc12`.
+The board plays these in order. `?v=` on each line in `clips.js` is the cache buster.
 
 1. `oc01-home-alone-burst-pipe.mp4`
 2. `oc02-elf-boiler-hug.mp4`
@@ -80,15 +84,17 @@ The board plays these in order. `?v=` on each line in `clips.js` is the cache bu
 
 Renaming a file does not change the order. The list does.
 
-When you replace a file and keep the same name, change the `?v=` text on that line (any new string). That is the cache buster, same idea as the Halloween board. Leave `?v=` alone when the bytes did not change, or the TV downloads the clip again for no reason.
+When you replace a file and keep the same name, change the `?v=` text on that line (any new string). That is the cache buster. Leave `?v=` alone when the bytes did not change, or the TV downloads the clip again for no reason.
 
-`app.js` and `styles.css` are linked with `?v=20261028a`. Bump that text in `index.html` when you change those files so the TV does not keep an old copy. You do not need to touch it when you only edit `clips.js`.
+`app.js`, `styles.css`, `clips.js`, and the logo are linked with `?v=20261030a`. Bump that text in `index.html` when you change those files so the TV does not keep an old copy.
 
 ## Keeping the picture moving
 
-One `<video>` element is reused. There is no second preload element. Each clip is detached (`pause`, `src` cleared, `load()`) before the next one so the TV can free the decoder. Listeners are attached once, not per clip. Snow is a fixed 18 flakes, moved by one animation loop, and that loop pauses while the tab is hidden. The countdown is a single one-second interval. It reads the Eastern clock on each tick, so a scheduled reload does not lose the time, and the box size stays fixed so the picture does not shift.
+One `<video>` element is reused. There is no second preload element. Each clip is detached (`pause`, `src` cleared, `load()`) before the next one so the TV can free the decoder. Listeners are attached once, not per clip. Snow is a fixed 18 flakes, moved by one animation loop, and that loop pauses while the tab is hidden. The countdown is a single one-second interval. It is cleared when the page is hidden or unloaded, and started again when the picture comes back. It reads the Eastern clock on each tick, so a scheduled reload does not lose the time, and the box size stays fixed so the picture does not shift.
 
-A screen wake lock is requested where the browser allows it, and requested again when the page becomes visible.
+A screen wake lock is requested where the browser allows it, released while the page is hidden, and requested again when the page becomes visible.
+
+A clip that errors or never produces a picture is skipped, and the loop moves on.
 
 After the scheduled reload the page resumes on the next clip, rather than jumping back to the first one.
 
@@ -96,7 +102,7 @@ After the scheduled reload the page resumes on the next clip, rather than jumpin
 
 Every shipped clip is the same shape: 1920×1080, 24 fps, 15.0 seconds, H.264 High profile level 4.1, about 1.2–2.2 Mbps, faststart, plus a silent AAC track. The set is about 70 MB. Desktop Chrome plays that.
 
-A lot of TVs only hardware-decode Baseline or Main. High profile with B-frames can stay black, which is what the Halloween board ran into. If this TV does that, re-encode on a computer, put the new file in place of the old one, change `?v=`, and push:
+A lot of TVs only hardware-decode Baseline or Main. High profile with B-frames can stay black. If this TV does that, re-encode on a computer, put the new file in place of the old one, change `?v=`, and push:
 
 ```bash
 ffmpeg -y -i "INPUT.mp4" \

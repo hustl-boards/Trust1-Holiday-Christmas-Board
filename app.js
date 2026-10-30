@@ -32,6 +32,40 @@
   const pauseBtn = document.getElementById('pause');
   const soundBtn = document.getElementById('sound');
   const fx = document.getElementById('fx');
+  const brand = document.getElementById('brand');
+  const logo = document.getElementById('logo');
+
+  // Lower-left plate, in 1920x1080 source pixels. It covers the burned-in
+  // mark, phone, and pitch. Tops sit under the holiday headline.
+  const COVER_X = 40;
+  const COVER_W = 730;
+  const COVER_BOTTOM = 1054;
+  const COVER_TOP = {
+    'oc01-home-alone-burst-pipe.mp4': 612,
+    'oc02-elf-boiler-hug.mp4': 546,
+    'oc03-christmas-vacation-furnace.mp4': 580,
+    'oc04-jingle-all-the-way-boiler.mp4': 584,
+    'oc05-grinch-water-heater.mp4': 576,
+    'oc06-christmas-story-furnace.mp4': 596,
+    'oc07-die-hard-ductwork.mp4': 615,
+    'oc08-rudolph-heat-pump.mp4': 549,
+    'oc09-frosty-frozen-spigot.mp4': 578,
+    'oc10-charlie-brown-tree-radiator.mp4': 577,
+    'oc11-nightmare-before-christmas-boiler.mp4': 591,
+    'oc12-gremlins-leaky-pipe.mp4': 613,
+    'oc13-polar-express-boiler.mp4': 558,
+    'oc14-wonderful-life-radiator.mp4': 512,
+    'oc15-santa-clause-chimney.mp4': 600,
+    'oc16-scrooge-cold-fireplace.mp4': 616,
+    'oc17-miracle-34th-water-heater.mp4': 580,
+    'oc18-krampus-boiler.mp4': 576,
+    'oc19-love-actually-cue-cards.mp4': 636,
+    'oc20-heat-miser-boiler.mp4': 610,
+    'oc21-christmas-chronicles-heat-pump.mp4': 358,
+    'oc22-scrooged-frozen-thermostat.mp4': 511,
+    'oc23-christmas-with-the-kranks-roof.mp4': 550,
+    'oc24-jack-frost-hose-bib.mp4': 569
+  };
 
   const store = {
     get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
@@ -87,7 +121,11 @@
   let sawFrame = false;
   let clipStartedAt = Date.now();
   let wakeLock = null;
+  let wakePending = false;
+  let lastPlaceAt = 0;
+  let lastPlaceKey = '';
   let rafId = 0;
+  let countdownTimer = 0;
   let lastSnowAt = 0;
   let lastBarAt = 0;
   let lastWakeAt = 0;
@@ -220,7 +258,7 @@
 
   function countdownMessage(ms) {
     const parts = nyParts(new Date(ms));
-    if (parts.m === 12 && parts.d === 25) return 'Merry Christmas from the 3R family';
+    if (parts.m === 12 && parts.d === 25) return 'Merry Christmas from Trust 1 Services';
     let year = parts.y;
     if (parts.m === 12 && parts.d > 25) year += 1;
     let left = christmasStart(year) - ms;
@@ -241,6 +279,50 @@
     shownCountdown = text;
     countdown.textContent = text;
     publish();
+  }
+
+  function contentRect() {
+    const el = vid.getBoundingClientRect();
+    const vw = vid.videoWidth || 1920;
+    const vh = vid.videoHeight || 1080;
+    if (!el.width || !el.height || !vw || !vh) return null;
+    const scale = Math.min(el.width / vw, el.height / vh);
+    const dw = vw * scale;
+    const dh = vh * scale;
+    return {
+      left: el.left + (el.width - dw) / 2,
+      top: el.top + (el.height - dh) / 2,
+      width: dw,
+      height: dh
+    };
+  }
+
+  function placeBox(el, rect, box) {
+    const sx = rect.width / 1920;
+    const sy = rect.height / 1080;
+    el.style.left = (rect.left + box.x * sx) + 'px';
+    el.style.top = (rect.top + box.y * sy) + 'px';
+    el.style.width = (box.w * sx) + 'px';
+    el.style.height = (box.h * sy) + 'px';
+  }
+
+  function placeBrand() {
+    if (!brand) return;
+    if (!clips.length || !expectedSrc) {
+      brand.classList.remove('on');
+      lastPlaceKey = '';
+      return;
+    }
+    const rect = contentRect();
+    if (!rect) return;
+    const file = labelOf(expectedSrc);
+    const top = COVER_TOP[file] || 548;
+    const key = rect.left.toFixed(1) + ',' + rect.top.toFixed(1) + ','
+      + rect.width.toFixed(1) + ',' + rect.height.toFixed(1) + ',' + top;
+    if (key === lastPlaceKey) return;
+    lastPlaceKey = key;
+    placeBox(brand, rect, { x: COVER_X, y: top, w: COVER_W, h: COVER_BOTTOM - top });
+    brand.classList.add('on');
   }
 
   function publish() {
@@ -395,12 +477,14 @@
     publish();
     vid.src = src;
     armLive = true;
+    placeBrand();
     if (paused) return;
     playClip(gen);
   }
 
   function showEmpty() {
     releaseVideo();
+    placeBrand();
     counter.textContent = window.CLIPS ? 'No clips yet' : 'Playlist missing';
     counter.style.opacity = '1';
     bar.style.width = '0%';
@@ -424,9 +508,14 @@
   }
 
   function onProblem(ev) {
-    if (!mediaLive || reloading) return;
+    if (reloading) return;
     const current = vid.getAttribute('src') || '';
     if (!current || current !== expectedSrc) return;
+    // A decoder error can land before the frame loop arms this clip.
+    if (!mediaLive) {
+      if (ev.type === 'error') recover('error ' + labelOf(current));
+      return;
+    }
     if (ev.type !== 'error' && !seenPlaying) return;
     // A brief stall while the playhead is still moving is buffering, not a dead clip.
     if (ev.type === 'stalled' && Date.now() - lastAdvanceAt < 2000) return;
@@ -531,12 +620,22 @@
     }
   }
 
+  function releaseWake() {
+    const lock = wakeLock;
+    wakeLock = null;
+    if (lock && !lock.released) lock.release().catch(() => {});
+  }
+
   async function wake() {
-    if (!('wakeLock' in navigator) || document.hidden) return;
+    if (wakePending || !('wakeLock' in navigator) || document.hidden) return;
     try {
       if (wakeLock && !wakeLock.released) return;
+      wakePending = true;
       wakeLock = await navigator.wakeLock.request('screen');
-    } catch (e) {}
+    } catch (e) {
+    } finally {
+      wakePending = false;
+    }
   }
 
   function stepPlayer(now) {
@@ -561,6 +660,11 @@
     if (wall - lastWakeAt >= 60000) {
       lastWakeAt = wall;
       wake();
+    }
+
+    if (wall - lastPlaceAt >= 500) {
+      lastPlaceAt = wall;
+      placeBrand();
     }
 
     if (debug && dbg && wall - lastDebugAt >= 1000) {
@@ -639,10 +743,18 @@
     lastAdvanceAt += held;
   }
 
+  function stopCountdown() {
+    if (!countdownTimer) return;
+    clearInterval(countdownTimer);
+    countdownTimer = 0;
+  }
+
   function onVisible() {
     if (document.hidden) {
       if (rafId) cancelAnimationFrame(rafId);
       rafId = 0;
+      stopCountdown();
+      releaseWake();
       hiddenAt = Date.now();
       lastAdvanceAt = hiddenAt;
       return;
@@ -651,6 +763,9 @@
     hiddenAt = 0;
     wake();
     paintCountdown();
+    startCountdown();
+    lastPlaceKey = '';
+    placeBrand();
     if (pendingReload || (hardAt && Date.now() >= hardAt)) {
       navigate(pendingReload || 'hard', nextIndex(), false);
       return;
@@ -676,16 +791,44 @@
 
   document.addEventListener('visibilitychange', onVisible);
 
+  addEventListener('pagehide', () => {
+    stopCountdown();
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = 0;
+    releaseWake();
+    releaseVideo();
+  });
+
+  if (logo) logo.addEventListener('error', () => { logo.remove(); });
+  addEventListener('resize', () => {
+    lastPlaceKey = '';
+    placeBrand();
+  });
+  addEventListener('pageshow', (ev) => {
+    if (!ev.persisted) return;
+    wake();
+    paintCountdown();
+    startCountdown();
+    if (!clips.length) {
+      showEmpty();
+      return;
+    }
+    if (!expectedSrc) show(index);
+    else if (!paused && vid.paused) playClip(generation);
+    lastPlaceKey = '';
+    placeBrand();
+    startLoop();
+  });
+
   if (debug) {
     dbg = document.createElement('div');
-    dbg.style.cssText = 'position:fixed;left:28px;bottom:28px;z-index:9;background:rgba(0,0,0,.75);color:#f4e4b0;font:16px/1.4 monospace;padding:8px 10px;border-radius:6px;white-space:pre';
+    dbg.style.cssText = 'position:fixed;left:28px;bottom:28px;z-index:9;background:rgba(0,0,0,.75);color:#fdb714;font:16px/1.4 monospace;padding:8px 10px;border-radius:6px;white-space:pre';
     document.body.appendChild(dbg);
   }
 
   buildSnow();
   paintCountdown();
-  // One interval for the life of the page. A scheduled reload starts a fresh one.
-  let countdownTimer = 0;
+  // Cleared while the page is hidden, and started again when it is shown.
   function startCountdown() {
     if (countdownTimer) return;
     countdownTimer = setInterval(() => {
