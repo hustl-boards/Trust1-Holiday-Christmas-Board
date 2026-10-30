@@ -257,6 +257,7 @@
     if (text === shownCountdown) return;
     shownCountdown = text;
     countdown.textContent = text;
+    countdown.classList.toggle('greeting', text === 'Merry Christmas from Trust 1 Services');
     publish();
   }
 
@@ -297,11 +298,22 @@
     const file = labelOf(expectedSrc);
     const top = COVER_TOP[file] || 548;
     const key = rect.left.toFixed(1) + ',' + rect.top.toFixed(1) + ','
-      + rect.width.toFixed(1) + ',' + rect.height.toFixed(1) + ',' + top;
+      + rect.width.toFixed(1) + ',' + rect.height.toFixed(1) + ',' + top
+      + ',' + window.innerWidth + ',' + window.innerHeight;
     if (key === lastPlaceKey) return;
-    lastPlaceKey = key;
     placeBox(brand, rect, { x: COVER_X, y: top, w: COVER_W, h: COVER_BOTTOM - top });
     brand.classList.add('on');
+    const box = brand.getBoundingClientRect();
+    if (box.width < 2 || box.height < 2) return;
+    lastPlaceKey = key;
+    const safeX = window.innerWidth * 0.05;
+    const safeY = window.innerHeight * 0.05;
+    const padL = Math.min(box.width * 0.2, Math.max(box.width * 0.035, Math.ceil(safeX - box.left)));
+    const padR = Math.min(box.width * 0.12, Math.max(box.width * 0.04, 16));
+    const padB = Math.min(box.height * 0.18, Math.max(box.height * 0.04, Math.ceil(safeY - (window.innerHeight - box.bottom))));
+    const padT = Math.min(box.height * 0.12, Math.max(box.height * 0.03, 12));
+    brand.style.padding = Math.round(padT) + 'px ' + Math.round(padR) + 'px '
+      + Math.round(padB) + 'px ' + Math.round(padL) + 'px';
   }
 
   function publish() {

@@ -1,34 +1,36 @@
-:root{--gold:#fdb714;--bg:#0b0d12}
+/* Flat fills sampled from the Trust 1 logo SVG: gold #fdb714, cream #fdf3cb. */
+:root{--gold:#fdb714;--cream:#fdf3cb;--bg:#0b0d12;--safe-x:5vw;--safe-y:5vh}
 *{box-sizing:border-box}
 html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000;color-scheme:dark}
-body{font-family:Arial,Helvetica,sans-serif;color:#fff}
-#stage{position:fixed;inset:0;cursor:none;background:
-  radial-gradient(ellipse at 80% 90%, rgba(253,183,20,.18), transparent 55%),
-  linear-gradient(180deg, #0b0d12, #16130c)}
+body{font-family:Arial,Helvetica,sans-serif;color:var(--cream)}
+#stage{position:fixed;inset:0;cursor:none;background:#000}
 #vid{position:absolute;inset:0;z-index:2;width:100%;height:100%;object-fit:contain;background:#000;opacity:0;transition:opacity .6s ease;user-select:none;-webkit-user-drag:none}
 #vid.on{opacity:1}
 #fx{position:absolute;inset:0;z-index:3;pointer-events:none;overflow:hidden}
 .flake{position:absolute;top:0;display:block;border-radius:50%;background:#fff}
-#fade{position:absolute;inset:0;z-index:4;pointer-events:none;background:linear-gradient(to bottom,rgba(0,0,0,.08),transparent 15%,transparent 84%,rgba(0,0,0,.2))}
-#brand{position:fixed;z-index:5;display:none;box-sizing:border-box;background:#0b0d12;pointer-events:none}
+#fade{position:absolute;inset:0;z-index:4;pointer-events:none;background:
+  linear-gradient(to bottom,rgba(0,0,0,.32),transparent 16%,transparent 78%,rgba(0,0,0,.4))}
+#brand{position:fixed;z-index:5;display:none;box-sizing:border-box;align-items:stretch;justify-content:stretch;padding:0;background:var(--bg);border:0;overflow:hidden;pointer-events:none}
 #brand.on{display:flex}
-#brand{align-items:flex-end;justify-content:center;border-top:3px solid var(--gold);padding:8px 14px 12px;overflow:hidden}
-#brand img{display:block;width:auto;height:auto;max-width:100%;max-height:58%;object-fit:contain;user-select:none;-webkit-user-drag:none}
-#progress{position:absolute;left:0;right:0;bottom:0;z-index:5;height:5px;background:rgba(255,255,255,.08)}
-#progress span{display:block;width:0;height:100%;background:var(--gold);box-shadow:0 0 10px var(--gold)}
-#countdown{position:absolute;right:18px;top:14px;z-index:6;box-sizing:border-box;width:520px;height:48px;padding:4px 12px;display:flex;align-items:center;justify-content:flex-end;text-align:right;border:1px solid rgba(253,183,20,.8);border-radius:8px;background:rgba(11,13,18,.88);color:var(--gold);font-size:26px;font-weight:800;letter-spacing:.01em;line-height:1.15;font-variant-numeric:tabular-nums;text-transform:none;white-space:nowrap;pointer-events:none}
+#brand img{display:block;width:100%;height:100%;object-fit:contain;object-position:center bottom;user-select:none;-webkit-user-drag:none}
+#progress{position:absolute;left:0;right:0;bottom:0;z-index:5;height:3px;background:rgba(255,255,255,.1)}
+#progress span{display:block;width:0;height:100%;background:var(--cream)}
+#countdown{position:absolute;top:var(--safe-y);right:var(--safe-x);z-index:6;box-sizing:border-box;width:auto;max-width:calc(100% - (var(--safe-x) * 2));height:auto;padding:.4em .8em;display:flex;align-items:center;justify-content:flex-end;gap:.35em;text-align:right;border:0;border-radius:8px;background:rgba(0,0,0,.78);color:var(--gold);font-size:clamp(18px,1.45vw,48px);font-weight:800;letter-spacing:.01em;line-height:1.15;font-variant-numeric:tabular-nums;text-transform:none;white-space:nowrap;pointer-events:none}
+#countdown.greeting{color:var(--cream)}
 #countdown:empty{visibility:hidden}
-#counter{position:absolute;right:18px;top:70px;z-index:6;padding:7px 10px;border:1px solid rgba(253,183,20,.5);border-radius:7px;background:rgba(0,0,0,.5);font-size:13px;font-weight:700;letter-spacing:.08em;opacity:0;transition:opacity .2s}
-#controls{position:absolute;left:50%;bottom:24px;z-index:6;transform:translateX(-50%);display:flex;gap:8px;opacity:0;transition:opacity .2s}
-#controls button{width:44px;height:38px;border-radius:8px;border:1px solid rgba(253,183,20,.6);background:rgba(0,0,0,.72);color:#fff;font-size:17px;cursor:pointer}
+#counter{position:absolute;right:var(--safe-x);top:calc(var(--safe-y) + 4.2em);z-index:6;padding:.45em .7em;border:0;border-radius:7px;background:rgba(0,0,0,.72);color:var(--cream);font-size:clamp(12px,0.85vw,22px);font-weight:700;letter-spacing:.08em;opacity:0;transition:opacity .2s}
+#controls{position:absolute;left:50%;bottom:var(--safe-y);z-index:6;transform:translateX(-50%);display:flex;gap:8px;opacity:0;transition:opacity .2s}
+#controls button{width:clamp(40px,2.6vw,72px);height:clamp(36px,2.2vw,64px);border-radius:8px;border:0;background:rgba(0,0,0,.78);color:var(--cream);font-size:clamp(16px,1.05vw,28px);cursor:pointer}
+#controls button:hover,#controls button:focus-visible{color:var(--gold)}
+#controls button:focus-visible{outline:2px solid var(--cream);outline-offset:2px}
 #stage.awake{cursor:default}
 #stage:hover #controls,#stage:hover #counter{opacity:1}
 @media (max-width:700px){
-  #countdown{right:12px;top:12px;width:auto;max-width:calc(100% - 24px);height:auto;min-height:36px;font-size:15px;white-space:normal}
-  #counter{right:12px;top:64px}
-  #controls{bottom:14px}
-  #controls button{width:40px;height:36px}
+  #countdown{white-space:normal}
+  #counter{top:calc(var(--safe-y) + 5.4em)}
 }
 @media (prefers-reduced-motion: reduce){
   .flake{opacity:0}
+  #vid{transition:none}
+  #controls,#counter{transition:none}
 }

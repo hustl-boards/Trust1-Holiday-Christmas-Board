@@ -86,7 +86,7 @@ Renaming a file does not change the order. The list does.
 
 When you replace a file and keep the same name, change the `?v=` text on that line (any new string). That is the cache buster. Leave `?v=` alone when the bytes did not change, or the TV downloads the clip again for no reason.
 
-`app.js`, `styles.css`, `clips.js`, and the logo are linked with `?v=20261030a`. Bump that text in `index.html` when you change those files so the TV does not keep an old copy.
+`app.js`, `styles.css`, `clips.js`, and the logo are linked with `?v=20261030e`. Bump that text in `index.html` when you change those files so the TV does not keep an old copy.
 
 ## Keeping the picture moving
 
