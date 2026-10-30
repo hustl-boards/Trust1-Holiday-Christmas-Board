@@ -30,7 +30,7 @@ Clips start muted so Chrome and TV browsers allow autoplay. M, or the sound butt
 
 Hover the picture to see the controls and the clip count (`3 / 24`). The pointer hides again after a few seconds still. The countdown sits in the top-right corner, clear of the titles on the left of each clip. It ticks days, hours, minutes, and seconds until 12:00 AM Christmas morning, America/New_York, no matter what timezone the TV is set to. On December 25 it reads Merry Christmas from Trust 1 Services. After that day it counts down to the next Christmas. A light snowfall sits over the picture.
 
-The Trust 1 Services logo sits on a dark plate in the lower left of each clip, so the gold mark stays easy to read. The holiday headlines on the clips stay visible. Logo files are `assets/trust1-logo.svg` and `assets/trust1-logo.png`.
+The Trust 1 Services logo is part of each clip, under the holiday headline. Logo files are `assets/trust1-logo.svg` and `assets/trust1-logo.png`.
 
 ## URL options
 
@@ -86,7 +86,7 @@ Renaming a file does not change the order. The list does.
 
 When you replace a file and keep the same name, change the `?v=` text on that line (any new string). That is the cache buster. Leave `?v=` alone when the bytes did not change, or the TV downloads the clip again for no reason.
 
-`app.js`, `styles.css`, `clips.js`, and the logo are linked with `?v=20261030e`. Bump that text in `index.html` when you change those files so the TV does not keep an old copy.
+`app.js`, `styles.css`, and `clips.js` are linked with `?v=20261030f`. Bump that text in `index.html` when you change those files so the TV does not keep an old copy.
 
 ## Keeping the picture moving
 
