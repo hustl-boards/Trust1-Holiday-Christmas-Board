@@ -219,8 +219,24 @@
     const text = countdownMessage(clockNow());
     if (text === shownCountdown) return;
     shownCountdown = text;
-    countdown.textContent = text;
-    countdown.classList.toggle('greeting', text === 'Merry Christmas from Trust 1 Services');
+    const greeting = text === 'Merry Christmas from Trust 1 Services';
+    countdown.classList.toggle('greeting', greeting);
+    countdown.replaceChildren();
+    if (greeting) {
+      const hello = document.createElement('span');
+      hello.className = 'red';
+      hello.textContent = 'Merry Christmas';
+      const name = document.createElement('span');
+      name.className = 'green';
+      name.textContent = 'Trust 1 Services';
+      countdown.append(hello, ' from ', name);
+    } else {
+      const split = text.indexOf(' ');
+      const num = document.createElement('span');
+      num.className = 'red';
+      num.textContent = text.slice(0, split);
+      countdown.append(num, text.slice(split));
+    }
     publish();
   }
 
