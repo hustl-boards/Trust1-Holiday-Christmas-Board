@@ -229,15 +229,6 @@
     return utc;
   }
 
-  const christmasStartCache = Object.create(null);
-
-  function christmasStart(year) {
-    if (christmasStartCache[year] == null) {
-      christmasStartCache[year] = wallClockUtc(year, 12, 25, 0, 0, 0);
-    }
-    return christmasStartCache[year];
-  }
-
   function frozenNow() {
     const raw = params.get('date');
     if (!raw) return 0;
@@ -252,23 +243,11 @@
     return FROZEN_NOW || Date.now();
   }
 
-  function pad2(n) {
-    return (n < 10 ? '0' : '') + n;
-  }
-
   function countdownMessage(ms) {
     const parts = nyParts(new Date(ms));
     if (parts.m === 12 && parts.d === 25) return 'Merry Christmas from Trust 1 Services';
-    let year = parts.y;
-    if (parts.m === 12 && parts.d > 25) year += 1;
-    let left = christmasStart(year) - ms;
-    if (left < 0) left = 0;
-    const total = Math.floor(left / 1000);
-    const days = Math.floor(total / 86400);
-    const hours = Math.floor((total % 86400) / 3600);
-    const mins = Math.floor((total % 3600) / 60);
-    const secs = total % 60;
-    return days + 'd ' + pad2(hours) + 'h ' + pad2(mins) + 'm ' + pad2(secs) + 's until Christmas';
+    const days = daysUntilChristmas(parts);
+    return days + (days === 1 ? ' day' : ' days') + ' until Christmas';
   }
 
   let shownCountdown = '';
@@ -834,7 +813,7 @@
     countdownTimer = setInterval(() => {
       if (document.hidden) return;
       paintCountdown();
-    }, 1000);
+    }, 60 * 1000);
   }
   startCountdown();
   lastWakeAt = Date.now();
